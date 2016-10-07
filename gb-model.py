@@ -7,11 +7,10 @@ with respect to different properties"""
 import json
 import os
 import itertools
-import pandas as pd
 import numpy as np
 import matplotlib as mpl
 mpl.rc('font', family='serif')
-mpl.rc('legend', fontsize=10, loc=0)
+#mpl.rc('legend',  loc=0) # fontsize=10,
 import matplotlib.pyplot as plt
 
 # todo: use pint or another unit manager
@@ -138,15 +137,15 @@ class System:
         """
         # initialize values
         #x_solute_gb = np.linspace(0.001, 0.499, 1000) # domain over which GB energies will be found. May need to reduce number
-        x_solute_gb = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
-        grain_boundary_energies = np.zeros((x_solute_gb.shape))
+        x_solute_gbs = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
+        grain_boundary_energies = np.zeros((x_solute_gbs.shape))
         stable_grain_size = 1 # initial guess for grain size
-        delta = 10 # initial change in grain size to converge
+        delta = 10.0 # initial change in grain size to converge
         tolerance = 0.00001 # stopping accuracy of stable_grain_size
         while True:
             # calculate the grain_bondary_energies
-            for k in range(len(x_solute_gb)):
-                grain_boundary_energies[k] = self.calculate_norm_gb_energy(x_solute_gb[k], temperature+273, stable_grain_size, overall_composition)
+            for k, x_solute_gb in enumerate(x_solute_gbs):
+                grain_boundary_energies[k] = self.calculate_norm_gb_energy(x_solute_gb, temperature+273, stable_grain_size, overall_composition)
             # skipping step to eliminate non-physical x_solute_interior values
             # find the minimum energy
             min_energy = np.nanmin(grain_boundary_energies)
@@ -174,15 +173,15 @@ class System:
             temperature (float): temperature to check for stability. Defaults to 60% of the melting temperature (in Celsius, but shouldn't be?)
         """
         if not temperature:
-            temperature = (self.t_melt - 273)*0.6+273
-        x_solute_gb = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
-        grain_boundary_energies = np.zeros((x_solute_gb.shape))
+            temperature = (self.t_melt)*0.6
+        x_solute_gbs = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
+        grain_boundary_energies = np.zeros((x_solute_gbs.shape))
         overall_composition = 0.001
         delta = 0.0001
         while True:
             # calculate the grain_bondary_energies
-            for k in range(len(x_solute_gb)):
-                grain_boundary_energies[k] = self.calculate_norm_gb_energy(x_solute_gb[k], temperature, grain_size, overall_composition)
+            for k, x_solute_gb in enumerate(x_solute_gbs):
+                grain_boundary_energies[k] = self.calculate_norm_gb_energy(x_solute_gb, temperature+273, grain_size, overall_composition)
             min_energy = np.nanmin(grain_boundary_energies)
             # if minimum energy is smaller than 0, it can be stabilized
             if min_energy <= 0:
@@ -212,8 +211,8 @@ class System:
         # Plot
         fig, ax = plt.subplots()
         fig.set_size_inches(6, 6)
-        for i in range(len(grain_sizes)):
-            plt.plot(x_solute_gb, norm_gb_energy[:][i], marker=markers[i], markersize=5, linestyle='None', label='d = {} nm'.format(str(grain_sizes[i])))
+        for i, grain_size in enumerate(grain_sizes):
+            plt.plot(x_solute_gb, norm_gb_energy[:][i], marker=markers[i], markersize=5, linestyle='None', label='d = {} nm'.format(str(grain_size)))
         ax.axhline(0, color='k')
         plt.legend(frameon=False, loc=0)
         plt.title(r'Grain Boundary Energy of {}-{}'.format(self.solvent, self.solute))
@@ -240,12 +239,12 @@ class System:
         """
         grain_sizes = np.zeros((len(overall_compositions), len(temperatures))) # create an empty space for grain sizes
         for i, overall_composition in enumerate(overall_compositions):
-            for j, _ in enumerate(temperatures):
-                grain_sizes[i][j] = self.optimize_grain_size(overall_compositions[i], temperatures[j]) # can be parallelized
+            for j, temperature in enumerate(temperatures):
+                grain_sizes[i][j] = self.optimize_grain_size(overall_composition, temperature) # can be parallelized
         # Plot
         fig, ax = plt.subplots()
         fig.set_size_inches(6, 6)
-        for i in range(len(overall_compositions)):
+        for i, overall_composition in enumerate(overall_compositions):
             plt.plot(temperatures, grain_sizes[i][:], marker=markers[i], markersize=5, linestyle='--', label='$X_0 = $ {}'.format(overall_composition))
         ax.axhline(0, color='k')
         plt.legend(frameon=False, loc=0)
@@ -259,7 +258,7 @@ class System:
         if plot_inverse:
             fig, ax = plt.subplots()
             fig.set_size_inches(6, 6)
-            for i in range(len(overall_compositions)):
+            for i, overall_composition in enumerate(overall_compositions):
                 plt.plot(temperatures, 1/grain_sizes[i][:], marker=markers[i], markersize=5, linestyle='--', label='$X_0 = $ {}'.format(overall_composition))
             ax.axhline(0, color='k')
             plt.legend(frameon=False, loc=0)
@@ -270,8 +269,8 @@ class System:
                 fig.savefig(inverse_filename)
                 plt.close(fig)
 
-    def plot_grain_size_vs_temperature_for_h_mix(self, x_overall, temperatures, 
-                                                 h_mixes, filename=None, 
+    def plot_grain_size_vs_temperature_for_h_mix(self, x_overall, temperatures,
+                                                 h_mixes, filename=None,
                                                  markers=['o', 'v', 'd', '^', '<', '>', 's', '*', 'x', '+', '1', '2']):
         """Plot a figure of stablized grain size vs. temperature for different mixing enthalpies with fixed x_overall
 
@@ -284,17 +283,17 @@ class System:
             markers ([str]): list of matplotlib markers that can be overridden
         """
         system_h_mix = self.h_mix
-        
-        grain_sizes = np.zeros((len(h_mixes),len(temperatures))) # create an empty space for grain sizes
-        for i in range(len(h_mixes)):
-            self.h_mix = h_mixes[i]*1000
-            for j in range(len(temperatures)):
-                grain_sizes[i][j] = self.optimize_grain_size(x_overall, temperatures[j]) # can be parallelized        
+
+        grain_sizes = np.zeros((len(h_mixes), len(temperatures))) # create an empty space for grain sizes
+        for i, h_mix in enumerate(h_mixes):
+            self.h_mix = h_mix*1000
+            for j, temperature in enumerate(temperatures):
+                grain_sizes[i][j] = self.optimize_grain_size(x_overall, temperature) # can be parallelized
         # Plot
         fig, ax = plt.subplots()
         fig.set_size_inches(6, 6)
-        for i in range(len(h_mixes)):
-            plt.plot(temperatures, grain_sizes[i][:], marker=markers[i], markersize=5, linestyle='--', label=r'$\Delta H_\mathrm{mix} = $ '+ str(h_mixes[i])+ r' $\mathrm{kJ/mol}$')
+        for i, h_mix in enumerate(h_mixes):
+            plt.plot(temperatures, grain_sizes[i][:], marker=markers[i], markersize=5, linestyle='--', label=r'$\Delta H_\mathrm{mix} = $ '+ str(h_mix)+ r' $\mathrm{kJ/mol}$')
         ax.axhline(0, color='k')
         plt.legend(frameon=False, loc=0, prop={'size':10})
         plt.title(r'Stabilized Grain Sizes of {}-{}'.format(system.solvent, system.solute))
@@ -306,9 +305,9 @@ class System:
 
         self.h_mix = system_h_mix
 
-def plot_solubility_chart(systems, grain_size, max_solute_composition, filename=None, label_points=False, interactive_plot=False, axis_limits=None):
+def plot_solubility_chart(systems, grain_size, max_solute_composition, filename=None, label_points=False, interactive_plot=False, axis_limits=None, temperature=None):
     """Plot a solubility chart for the given systems and target grain size
-    
+
     Args:
         systems ([System]): list of systems
         grain_size (float): target grain size in (nm)
@@ -321,14 +320,13 @@ def plot_solubility_chart(systems, grain_size, max_solute_composition, filename=
     stable_list = []
     composition_list = []
     for system in systems:
-        (is_stable, overall_composition) = system.solute_can_stablize(grain_size, max_solute_composition)
+        (is_stable, overall_composition) = system.solute_can_stablize(grain_size, max_solute_composition, temperature=temperature)
         stable_list.append(is_stable)
         composition_list.append(overall_composition)
     fig, ax = plt.subplots()
     fig.set_size_inches(6, 6)
-    #ax.axis([-120, 30, -50, 50]) # ag
     if axis_limits:
-        ax.axis(axis_limits) # fe 
+        ax.axis(axis_limits)
     ax.axvline(0, color='k')
     ax.axhline(0, color='k')
     composition_min = np.min(composition_list)
@@ -380,21 +378,21 @@ system.plot_grain_size_vs_temperature_for_h_mix(0.04, np.arange(300-273,1400-273
 
 # they want a grain size of 25 nm.
 
-solute_list = ['Fe', 'B', 'Li', 'Be', 'Na', 'Mg', 'Al', 'Si', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Co', 'Ni', 'Cu', 'Zn', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Ru', 'Rh', 'Pd', 'Cd', 'In', 'Sn', 'Cs', 'Ba', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Tl', 'Pb', 'Th', 'U']
+solute_list = ['B', 'Li']#'Fe', 'Be', 'Na', 'Mg', 'Al', 'Si', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Co', 'Ni', 'Cu', 'Zn', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Ru', 'Rh', 'Pd', 'Cd', 'In', 'Sn', 'Cs', 'Ba', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Tl', 'Pb', 'Th', 'U']
 systems = []
 for sol in solute_list:
     systems.append(System.from_json(path+'elements.json', path+'enthalpy.json', 'Ag', sol))
 
-#system = systems[0]
-#os.system('mkdir {}/{}'.format(system.solvent, system.solute))
-#system.plot_energy_vs_x_gb_for_d(0.0308, 600+273, np.array([10, 15, 25, 30, 50, 1e12]), filename='{}/{}/energy-vs-grain-boundary-compositon.eps'.format(system.solvent, system.solute))
-#system.plot_grain_size_vs_temperature_for_x_overall(np.arange(573-273,1273, 25), np.array([0.01, 0.015, 0.02, 0.03, 0.0308, 0.04, 0.05]), filename='{}/{}/grain-size-vs-temperature.eps'.format(system.solvent, system.solute), plot_inverse=True, inverse_filename='{}/{}/inverse-grain-size-vs-temperature.eps'.format(system.solvent, system.solute))
-#system.plot_grain_size_vs_temperature_for_h_mix(0.0308, np.arange(300-273,1400-273, 25), np.array([0, -20, -24, -25, -26, -30]), filename='{}/{}/grain-size-vs-temperature-h-mix.eps'.format(system.solvent, system.solute))
-
-plot_solubility_chart(systems, 25, 0.10, filename='solubility-chart-Ag-25nm.eps', label_points=True, axis_limits=[-120, 30, -50, 50], interactive_plot=True)
+system = systems[0]
+os.system('mkdir {}/{}'.format(system.solvent, system.solute))
+print('starting energy vs x gb')
+system.plot_energy_vs_x_gb_for_d(0.0308, 500, np.array([10, 15, 25, 30, 50, 1e12]), filename='{}/{}/test-e-vs-x-gb.eps'.format(system.solvent, system.solute))
+print('starting grain size vs t')
+system.plot_grain_size_vs_temperature_for_x_overall(np.arange(500, 700, 25), np.array([0.05, 0.01]), filename='{}/{}/test-d-vs-t-x-overall.eps'.format(system.solvent, system.solute), plot_inverse=True, inverse_filename='{}/{}/inverse-grain-size-vs-temperature.eps'.format(system.solvent, system.solute))
+print('starting grain size vs t for h_mix')
+system.plot_grain_size_vs_temperature_for_h_mix(0.0308, np.arange(500, 700, 25), np.array([0, -30]), filename='{}/{}/test-d-vs-t-h-mix.eps'.format(system.solvent, system.solute))
+plot_solubility_chart(systems, 25, 0.10, filename='test-solubility-chart.eps', label_points=True, axis_limits=[-120, 30, -50, 50], interactive_plot=True)
 
 #system = System.from_json(path+'elements.json', path+'enthalpy.json','Ag','B')
 #system.plot_energy_vs_x_gb_for_d(0.046, 100+273, np.array([10, 15, 23.1, 30, 50, 1e12]))
 # Ag-B solubility range is from 700-1200 at a maximium X_B ~ 0.030"""
-
-

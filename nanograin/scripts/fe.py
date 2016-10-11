@@ -5,11 +5,9 @@
 import sys 
 sys.path.append("/Users/brandon/Documents/Projects/grain-boundary-code")
 
-import os
 import numpy as np
-import matplotlib.pyplot as plt 
-from nanograin.system import System, plot_solubility_chart
-
+from nanograin.system import System
+from nanograin.plot import plot_energy_vs_x_gb_for_d, plot_grain_size_vs_temperature_for_x_overall, plot_grain_size_vs_temperature_for_h_mix, plot_solubility_chart
 
 #full_solute_list = ['H', 'Li', 'Be', 'B', 'C', 'N', 'Na', 'Mg', 'Al', 'Si', 'P', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Th', 'U', 'Pu']"""
 
@@ -28,11 +26,11 @@ system.h_mix = -25*1e3
 system.h_elastic = -108*1e3
 system.sigma = 31217
 system.molar_volume['Fe']=7.107*1e-6
-system.plot_energy_vs_x_gb_for_d(0.03, 550, np.array([10, 15, 23.1, 30, 50, 1e12]), filename='fezr-energy-vs-grain-boundary-compositon.eps')
+plot_energy_vs_x_gb_for_d(system, 0.03, 550, np.array([10, 15, 23.1, 30, 50, 1e12]), filename='fezr-energy-vs-grain-boundary-compositon.eps')
 #again change the properties wrt Mark's code
 system.h_mix = -24*1e3
-system.plot_grain_size_vs_temperature_for_x_overall(np.arange(300-273,1400-273, 20), np.array([0.01, 0.015, 0.02, 0.03, 0.04, 0.05]), filename='fezr-grain-size-vs-temperature.eps', plot_inverse=True, inverse_filename='inverse-grain-size-vs-temperature.eps')
-system.plot_grain_size_vs_temperature_for_h_mix(0.04, np.arange(300-273,1400-273, 20), np.array([0, -20, -24, -25, -26, -30]), filename='fezr-grain-size-vs-temperature-h-mix.eps')
+plot_grain_size_vs_temperature_for_x_overall(system, np.arange(300-273,500-273, 20), np.array([0.01, 0.015, 0.02, 0.03, 0.04, 0.05]), filename='fezr-grain-size-vs-temperature.eps', plot_inverse=True, inverse_filename='inverse-grain-size-vs-temperature.eps')
+plot_grain_size_vs_temperature_for_h_mix(system, 0.04, np.arange(300-273,1400-273, 20), np.array([0, -20, -24, -25, -26, -30]), filename='fezr-grain-size-vs-temperature-h-mix.eps')
 
 # plot a stability map
 solute_list = ['B', 'Li']#'Ag', 'Be', 'Na', 'Mg', 'Al', 'Si', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Co', 'Ni', 'Cu', 'Zn', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Ru', 'Rh', 'Pd', 'Cd', 'In', 'Sn', 'Cs', 'Ba', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Tl', 'Pb', 'Th', 'U']

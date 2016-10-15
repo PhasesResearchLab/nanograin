@@ -116,8 +116,18 @@ class System:
         were passed for the arguments. All of the plots would just be slices
         of this array. Variables could be optionally fixed.
         """
+        # check for errors in passed data
+        if x_solute_gb < 0 or x_solute_gb > 1:
+            raise ValueError('Solute grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_solute_gb))
+        if temperature < 0:
+            raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
+        if grain_size <= 0:
+            raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(grain_size))
+        if x_solute_sys < 0 or x_solute_sys > 0.5:
+            raise ValueError('System solute concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_solute_sys))
+
         x_solute_interior = (6*self.atomic_volume**(1/3)/grain_size*x_solute_gb-x_solute_sys)/(6*self.atomic_volume**(1/3)/grain_size - 1)
-        gb_energy = 1 + (2*(x_solute_gb - x_solute_interior)/(self.gamma_0*self.sigma))*((self.gamma_surf[self.solute]-self.gamma_surf[self.solvent])/6*self.sigma - self.h_mix * (17/3*x_solute_gb - 6*x_solute_interior + 1/6) + self.h_elastic - System.R*temperature*np.log((x_solute_interior*(1-x_solute_gb))/((1-x_solute_interior)*x_solute_gb)))
+        gb_energy = 1 + (2*(x_solute_gb - x_solute_interior)/(self.gamma_0*self.sigma))*((self.gamma_surf[self.solute]-self.gamma_surf[self.solvent])/6*self.sigma - self.h_mix * (17/3*x_solute_gb - 6*x_solute_interior + 1/6) + self.h_elastic - System.R*temperature*np.log((x_solute_interior*(1-x_solute_gb))/((1-x_solute_interior)*x_solute_gb))) #pylint: disable=E1101
         return gb_energy
 
     def optimize_grain_size(self, overall_composition, temperature):

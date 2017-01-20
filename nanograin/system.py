@@ -2,19 +2,19 @@
 model of the grain boundary energy to understand the stability of an alloy
 with respect to different properties"""
 
+# TODO: write a minimizer that takes n free variables and does a mapping.
+
 import json
 import itertools
 import numpy as np
+from scipy.constants import R, N_A
 
 class System:
     """Defines the properties of a binary solvent-solute system"""
 
-    R = 8.3144598484848484 # gas constant, J/mol/K
-    N_A = 6.022140857747474e23 # Avagadro's number, 1/mol
-
     def __init__(self, solvent, solute, gamma_0, h_mix, h_elastic, t_melt,
                  atomic_volume, sigma, gamma_surf, molar_mass, molar_volume,
-                 bulk_modulus, shear_modulus, z):
+                 bulk_modulus, shear_modulus, z, lattice_parameter):
         # direct properties
         self.solvent = solvent
         self.solute = solute
@@ -30,7 +30,8 @@ class System:
         self.molar_volume = molar_volume
         self.bulk_modulus = bulk_modulus
         self.shear_modulus = shear_modulus
-        self.z = z
+        self.z = z # coordination
+        self.lattice_parameter = lattice_parameter
 
     @classmethod
     def from_json(cls, element_file, enthalpy_file, solvent, solute):
@@ -58,22 +59,39 @@ class System:
         molar_mass = {solvent: solvent_data['Atomic mass (g/mol)'], solute: solute_data['Atomic mass (g/mol)']}
         molar_volume = {solvent: solvent_data['Atomic Volume (cm3/mol)']/100**3, solute: solute_data['Atomic Volume (cm3/mol)']/100**3}
         z_values = {'fcc': 12, 'bcc': 8, 'hcp': 12, 'ortho': 6, 'tetrag': 6, 'diamond': 4} #check hex
-        z = {solvent: z_values[solvent_data['Crystal Structure']], solute: z_values[solute_data['Crystal Structure']]} # what is this? depends on structure
+        z = {solvent: z_values[solvent_data['Crystal Structure']], solute: z_values[solute_data['Crystal Structure']]}
         t_melt = {solvent: solvent_data['Melting point °C']+273, solute: solute_data['Melting point °C']+273}
-
+        lattice_parameter = {solvent: solvent_data['Lattice Parameter (Å) -a-'], solute: solute_data['Lattice Parameter (Å) -a-']}
         with open(enthalpy_file) as enthalpy_json_file:
             enthalpy_data = json.load(enthalpy_json_file)
         h_mix = enthalpy_data[solvent][solute]*1e3
         h_elastic = -2*(np.abs(molar_volume[solvent]-molar_volume[solute]))**2*bulk_modulus[solute]*shear_modulus[solvent]/(3*bulk_modulus[solute]*molar_volume[solvent]+4*shear_modulus[solvent]*molar_volume[solute])
-        atomic_volume = molar_volume[solvent]/System.N_A*1e27
-        sigma = System.N_A*(atomic_volume*1e-27)**(2/3)
+        atomic_volume = molar_volume[solvent]/N_A*1e27
+        sigma = N_A*(atomic_volume*1e-27)**(2/3)
 
-        return cls(solvent, solute, gamma_0, h_mix, h_elastic, t_melt[solvent], atomic_volume, sigma, gamma_surf, molar_mass, molar_volume, bulk_modulus, shear_modulus, z)
+        return cls(solvent, solute, gamma_0, h_mix, h_elastic, t_melt[solvent], atomic_volume, sigma, gamma_surf, molar_mass, molar_volume, bulk_modulus, shear_modulus, z, lattice_parameter)
 
     @classmethod
     def from_csv(cls, file, solvent, solute):
         """Create a system from a csv-like using pandas"""
         pass
+
+    def theoretical_density(self, x_solute):
+        """Return the ratio of the theoretical density of the alloy to the solvent
+        
+        Args:
+            x_solute (float): the mole fraction of solute in the system
+        """
+        solvent = self.solvent
+        solute = self.solute
+        M_solvent = self.molar_mass[solvent]
+        M_solute = self.molar_mass[solute]
+        V_m_solvent = self.molar_volume[solvent]
+        V_m_solute = self.molar_volume[solute]
+        density_pure_solvent = M_solvent/V_m_solvent
+        x_solvent = 1-x_solute
+        density_alloy = (M_solvent*x_solvent+M_solute*x_solute)/(V_m_solvent*x_solvent+V_m_solute*x_solute)
+        return density_alloy/density_pure_solvent
 
     def max_x_solute_sys(self, density_difference=0.10):
         """Return the maximum solute concentration relative to deviation from solvent density
@@ -102,6 +120,20 @@ class System:
         else:
             raise ValueError('The solute fractions of {} for a {:.2f}{} density difference from {} are out of range'.format(self.solute, density_difference*100, '%', self.solvent))
 
+    def calc_solid_solution_strengthening(self, concentration):
+        """This from Courtney's Mechanical Behavior of Materials 2nd Edition. Pgs 186-196"""
+        beta = 3  # constant
+        G_solvent = self.shear_modulus[self.solvent]/10**9
+        G_solute = self.shear_modulus[self.solute]/10**9
+        a_solvent = self.lattice_parameter[self.solvent]
+        a_solute = self.lattice_parameter[self.solute]
+        epsilon_b = np.abs((a_solute - a_solvent) / a_solvent)
+        epsilon_g = (G_solute - G_solvent) / G_solvent
+        epsilon_prime_g = epsilon_g / (1 + 0.5 * np.abs(epsilon_g))
+        epsilon_s = np.abs(epsilon_prime_g - beta * epsilon_b)
+        strengthening = G_solvent * epsilon_s ** (1.5) * concentration ** (0.5) / 700
+        return strengthening
+
     def calculate_norm_gb_energy(self, x_solute_gb, temperature, grain_size, x_solute_sys):
         """Calculates the normalized grain boundary energy
 
@@ -127,7 +159,7 @@ class System:
             raise ValueError('System solute concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_solute_sys))
 
         x_solute_interior = (6*self.atomic_volume**(1/3)/grain_size*x_solute_gb-x_solute_sys)/(6*self.atomic_volume**(1/3)/grain_size - 1)
-        gb_energy = 1 + (2*(x_solute_gb - x_solute_interior)/(self.gamma_0*self.sigma))*((self.gamma_surf[self.solute]-self.gamma_surf[self.solvent])/6*self.sigma - self.h_mix * (17/3*x_solute_gb - 6*x_solute_interior + 1/6) + self.h_elastic - System.R*temperature*np.log((x_solute_interior*(1-x_solute_gb))/((1-x_solute_interior)*x_solute_gb))) #pylint: disable=E1101
+        gb_energy = 1 + (2*(x_solute_gb - x_solute_interior)/(self.gamma_0*self.sigma))*((self.gamma_surf[self.solute]-self.gamma_surf[self.solvent])/6*self.sigma - self.h_mix * (17/3*x_solute_gb - 6*x_solute_interior + 1/6) + self.h_elastic - R*temperature*np.log((x_solute_interior*(1-x_solute_gb))/((1-x_solute_interior)*x_solute_gb))) #pylint: disable=E1101
         return gb_energy
 
     def optimize_grain_size(self, overall_composition, temperature):
@@ -244,3 +276,77 @@ class System:
                 grain_sizes[i][j] = self.optimize_grain_size(x_overall, temperature) # can be parallelized
         self.h_mix = system_h_mix
         return grain_sizes
+
+
+class TernarySystem():
+    """Creates a ternary systems based on two non-interacting binaries."""
+    def __init__(self, ab, ac):
+        """Takes two systems A-B and A-C."""
+        self.ab = ab
+        self.ac = ac
+
+    @classmethod
+    def from_json(cls, element_file, enthalpy_file, solvent, solute_b, solute_c):
+        ab = System.from_json(element_file, enthalpy_file, solvent, solute_b)
+        ac = System.from_json(element_file, enthalpy_file, solvent, solute_c)
+        return cls(ab, ac)
+
+    def calculate_norm_gb_energy(self, x_b_gb, x_c_gb, x_b_sys, x_c_sys, temperature, grain_size):
+        """Calculates the normalized grain boundary energy
+
+        Args:
+            x_solute_gb (float): solute concentration in the grain boundary in J/m^2
+            temperature (float): temperature in K
+            grain_size (float): grain size in J/m^2
+            x_solute_sys (float): solute concentration in the system J/m^2
+            system (dict): properties of the system
+
+        TODO: it would be neat if this made an N-dimensional array if ndarrays
+        were passed for the arguments. All of the plots would just be slices
+        of this array. Variables could be optionally fixed.
+        """
+        # check for errors in passed data
+        if x_b_gb < 0 or x_b_gb > 1:
+            raise ValueError(
+                'Solute b grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_b_gb))
+        if x_c_gb < 0 or x_c_gb > 1:
+            raise ValueError(
+                'Solute c grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_c_gb))
+        if temperature < 0:
+            raise ValueError(
+                'Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
+        if grain_size <= 0:
+            raise ValueError(
+                'Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(
+                    grain_size))
+        if x_b_sys < 0 or x_b_sys > 0.5:
+            raise ValueError(
+                'System solute b concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_b_sys))
+        if x_c_sys < 0 or x_c_sys > 0.5:
+            raise ValueError(
+                'System solute c concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_c_yss))
+
+        ab = self.ab
+        ac = self.ac
+        a = ab.solvent
+        b = ab.solute
+        c = ac.solute
+        x_b_i = (6*ab.atomic_volume**(1/3)/grain_size*x_b_gb-x_b_sys)/(6*ab.atomic_volume**(1/3)/grain_size-1)
+        x_c_i = (6*ac.atomic_volume**(1/3)/grain_size*x_c_gb-x_c_sys)/(6*ac.atomic_volume**(1/3)/grain_size-1)
+        # energy contributions
+        excess_gb_solute = ((x_b_gb - x_b_i) / (ab.gamma_0 * ab.sigma) + (x_c_gb - x_c_i) / (ac.gamma_0 * ac.sigma))/2 # ab+ac
+        surface_energy_diff = (((ab.gamma_surf[b] - ab.gamma_surf[a]) * ab.sigma)+\
+                               ((ac.gamma_surf[c] - ac.gamma_surf[a]) * ac.sigma))/2 # ab+ac
+        mixing_energy = ((ab.h_mix *(17 / 3 * x_b_gb - 6 * x_b_i + 1 / 6))+ \
+                                              (ac.h_mix * (17 / 3 * x_c_gb - 6 * x_c_i + 1 / 6)))/2 # ab+ac
+        elastic_num = ((-2*(np.abs(ab.molar_volume[a]-ab.molar_volume[b]))**2*ab.bulk_modulus[b]*ab.shear_modulus[a])-\
+                       (2*(np.abs(ac.molar_volume[a]-ac.molar_volume[c]))**2*ac.bulk_modulus[c]*ac.shear_modulus[c]))/2 # ab+ac
+        elastic_denom = ((3*ab.bulk_modulus[b] * ab.molar_volume[a] + 4 * ab.shear_modulus[a]*ab.molar_volume[b])+\
+                         (3*ac.bulk_modulus[c] * ac.molar_volume[a] + 4 * ac.shear_modulus[a]*ac.molar_volume[c])) # ab+ac
+        elastic_energy = elastic_num/elastic_denom # (ab+ac)/(ab+ac)
+        entropy = np.log((x_b_i*(1-x_b_gb)+x_c_i*(1-x_c_gb)) /((1-x_b_i)*x_b_gb+(1-x_c_i)*x_c_gb)) #(ab+bc)/(ab+bc)
+
+        gb_energy = 1 + 2*excess_gb_solute * ( \
+            surface_energy_diff/6 - mixing_energy + elastic_energy - R*temperature*entropy)
+
+        return gb_energy

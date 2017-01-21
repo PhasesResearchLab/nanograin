@@ -239,8 +239,7 @@ class System:
             A 2d array of energies for rows of grain sizes and columns of grain boundary solute composition
         """
         norm_gb_energy = np.ones((len(grain_sizes), len(x_solute_gb)))
-        for i, j in itertools.product(range(len(grain_sizes)), range(len(x_solute_gb))):
-            norm_gb_energy[i][j] = self.calculate_norm_gb_energy(x_solute_gb[j], temperature+273, grain_sizes[i], overall_composition)
+        norm_gb_energy = self.calculate_norm_gb_energy(x_solute_gb.reshape((1, len(x_solute_gb))), temperature+273, grain_sizes.reshape((len(grain_sizes),1)), overall_composition)
         return norm_gb_energy
         
     def calculate_grain_size_for_temperature_x_overall(self, temperatures, overall_compositions):

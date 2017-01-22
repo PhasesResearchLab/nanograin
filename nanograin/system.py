@@ -212,8 +212,8 @@ class System:
             elif stable_grain_size > 250:
                 return np.nan # assume destabilized
 
-    def solute_can_stablize(self, grain_size, max_solute_composition, temperature=None):
-        """ Returns whether the solute can be stablizied within the max_solute composition
+    def solute_can_stabilize_vec(self, grain_size, max_solute_composition, temperature=None):
+        """ Returns whether the solute can be stabilizied within the max_solute composition
 
         Args:
             grain_size (float): target grain size (in nm)
@@ -231,9 +231,8 @@ class System:
         delta = 0.0001
         while True:
             # calculate the grain_bondary_energies
-            for k, x_solute_gb in enumerate(x_solute_gbs):
-                grain_boundary_energies[k] = self.calculate_norm_gb_energy(x_solute_gb, temperature+273, grain_size, overall_composition) # TODO: speedup with all remaining gbe[k] = NaN after first?
-            min_energy = np.nanmin(grain_boundary_energies) 
+            grain_boundary_energies = self.calculate_norm_gb_energy(x_solute_gbs, temperature+273, grain_size, overall_composition) # TODO: speedup with all remaining gbe[k] = NaN after first?
+            min_energy = np.nanmin(grain_boundary_energies)
             # if minimum energy is smaller than 0, it can be stabilized
             if min_energy <= 0:
                 return (True, overall_composition)
@@ -260,7 +259,7 @@ class System:
         return norm_gb_energy
 
     def calculate_grain_size_for_temperature_x_overall(self, temperatures, overall_compositions):
-        """Calculate a 2d array stablized grain size for temperatures and x_overalls
+        """Calculate a 2d array stabilized grain size for temperatures and x_overalls
 
         Args:
             temperatures (ndarray): temperature domain of the plot in Celsius
@@ -275,7 +274,7 @@ class System:
         return grain_sizes
 
     def calculate_grain_size_for_temperature_h_mix(self, x_overall, temperatures, h_mixes):
-        """Calculate stablized grain sizes for temperatures and mixing enthalpies with fixed x_overall
+        """Calculate stabilized grain sizes for temperatures and mixing enthalpies with fixed x_overall
 
         Args:
             x_overall (float): overall solute composition

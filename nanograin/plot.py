@@ -40,7 +40,7 @@ def plot_grain_size_vs_temperature_for_x_overall(system, temperatures, overall_c
                                                     filename=None, plot_inverse=True,
                                                     inverse_filename=None,
                                                     markers=['o', 'v', 'd', '^', '<', '>', 's', '*', 'x', '+', '1', '2']):
-    """Plot a figure of stablized grain size vs. temperature for different x_overall at fixed x_GB
+    """Plot a figure of stabilized grain size vs. temperature for different x_overall at fixed x_GB
 
     Args:
         temperatures (ndarray): temperature domain of the plot in Celsius
@@ -84,7 +84,7 @@ def plot_grain_size_vs_temperature_for_x_overall(system, temperatures, overall_c
 def plot_grain_size_vs_temperature_for_h_mix(system, x_overall, temperatures,
                                                 h_mixes, filename=None,
                                                 markers=['o', 'v', 'd', '^', '<', '>', 's', '*', 'x', '+', '1', '2']):
-    """Plot a figure of stablized grain size vs. temperature for different mixing enthalpies with fixed x_overall
+    """Plot a figure of stabilized grain size vs. temperature for different mixing enthalpies with fixed x_overall
 
     Args:
         x_overall (float): overall solute composition
@@ -123,7 +123,7 @@ def plot_solubility_chart(systems, grain_size, max_solute_composition, filename=
     stable_list = []
     composition_list = []
     for system in systems:
-        (is_stable, overall_composition) = system.solute_can_stablize(grain_size, max_solute_composition, temperature=temperature)
+        (is_stable, overall_composition) = system.solute_can_stabilize(grain_size, max_solute_composition, temperature=temperature)
         stable_list.append(is_stable)
         composition_list.append(overall_composition)
     fig, ax = plt.subplots()
@@ -137,12 +137,14 @@ def plot_solubility_chart(systems, grain_size, max_solute_composition, filename=
     for system, stable, composition in zip(systems, stable_list, composition_list):
         if stable:
             plt.plot(system.h_elastic/1000, system.h_mix/1000, marker='o', color='r', markersize=((composition-composition_min)/(composition_max-composition_min)+1)*4, linestyle='')
+            #print("Ag-{}: stable concentration: {:03f}, shear modulus: {:d}, strengthening: {:d}".format(system.solute, composition, int(system.shear_modulus[system.solute]), int(system.calc_solid_solution_strengthening(composition))))
+            print("{} {:0.5f}".format(system.solute, composition))
         else:
             plt.plot(system.h_elastic/1000, system.h_mix/1000, marker='o', color='k', markersize=((composition-composition_min)/(composition_max-composition_min)+1)*4, linestyle='')
         if label_points:
             plt.annotate('{}'.format(system.solute), xy=(system.h_elastic/1000, system.h_mix/1000), size=10, textcoords='data')
     plt.title(r'{} Solubility Map'.format(system.solvent))
-    plt.xlabel(r'Elastic enthalpy, $\Delta_{\mathrm{seg}}^\mathrm{{elastic}}$ $\mathrm{kJ/mol}$', size=15)
+    plt.xlabel(r'Elastic enthalpy, $\Delta H_{\mathrm{seg}}^\mathrm{{elastic}}$ $\mathrm{kJ/mol}$', size=15)
     plt.ylabel(r'Enthalpy of mixing, $\Delta H_{\mathrm{mix}}$ $\mathrm{kJ/mol}$', size=15)
     if interactive_plot:
         plt.show()

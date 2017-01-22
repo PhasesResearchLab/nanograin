@@ -8,6 +8,7 @@ import json
 import itertools
 import numpy as np
 from scipy.constants import R, N_A
+from scipy.optimize import fsolve
 
 class System:
     """Defines the properties of a binary solvent-solute system"""
@@ -187,32 +188,19 @@ class System:
         Returns:
             Float of stable grain size
         """
+        # first just calculate with a small range of x_solute_gbs, if the min is negative at a large
+        #  grain size, >250, lets say we cannot converge
         x_solute_gbs = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
-        grain_boundary_energies = np.zeros((x_solute_gbs.shape))
-        stable_grain_size = 1 # initial guess for grain size
-        delta = 10.0 # initial change in grain size to converge
-        tolerance = 0.00001 # stopping accuracy of stable_grain_size
-        while True:
-            # calculate the grain_bondary_energies
-            grain_boundary_energies = self.calculate_norm_gb_energy(x_solute_gbs, temperature+273, stable_grain_size, overall_composition) # TODO: speedup with all remaining gbe[k] = NaN after first?
-            # skipping step to eliminate non-physical x_solute_interior values
-            # find the minimum energy
-            min_energy = np.nanmin(grain_boundary_energies)
-            # if minimum energy is greater than 0+tolerance, increase the grain size and the reverse
-            if min_energy > 0:
-                if delta < 0:
-                    delta = -1*delta/2
-                stable_grain_size += delta
-            elif min_energy < 0:
-                if delta > 0:
-                    delta = -1*delta/2
-                stable_grain_size += delta
-            if np.abs(delta) < tolerance:
-                return stable_grain_size
-            elif stable_grain_size > 250:
-                return np.nan # assume destabilized
+        if self._gb_energies_optimize_scipy(250, x_solute_gbs, temperature, overall_composition) < 0:
+            return fsolve(self._gb_energies_optimize_scipy, 1, args=(x_solute_gbs, temperature, overall_composition), xtol=0.0001)
+        else:
+            return np.nan
 
-    def solute_can_stabilize_vec(self, grain_size, max_solute_composition, temperature=None):
+    def _gb_energies_optimize_scipy(self, stable_grain_size, x_solute_gbs, temperature, overall_composition):
+        grain_boundary_energies = self.calculate_norm_gb_energy(x_solute_gbs, temperature + 273, stable_grain_size, overall_composition)
+        return np.nanmin(grain_boundary_energies)
+
+    def solute_can_stabilize(self, grain_size, max_solute_composition, temperature=None):
         """ Returns whether the solute can be stabilizied within the max_solute composition
 
         Args:

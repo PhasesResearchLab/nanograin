@@ -148,15 +148,30 @@ class System:
         were passed for the arguments. All of the plots would just be slices
         of this array. Variables could be optionally fixed.
         """
-        # check for errors in passed data
-        if x_solute_gb < 0 or x_solute_gb > 1:
-            raise ValueError('Solute grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_solute_gb))
-        if temperature < 0:
-            raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
-        if grain_size <= 0:
-            raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(grain_size))
-        if x_solute_sys < 0 or x_solute_sys > 0.5:
-            raise ValueError('System solute concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_solute_sys))
+        if isinstance(x_solute_gb, np.ndarray):
+            if (x_solute_gb < 0).any() or (x_solute_gb > 1).any():
+                raise ValueError('Solute grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_solute_gb))
+        else:
+            if x_solute_gb < 0 or x_solute_gb > 1:
+                raise ValueError('Solute grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_solute_gb))
+        if isinstance(temperature, np.ndarray):
+            if (temperature < 0).any():
+                raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
+        else:
+            if temperature < 0:
+                raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
+        if isinstance(grain_size, np.ndarray):
+            if (grain_size <= 0).any():
+                raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(grain_size))
+        else:
+            if grain_size <= 0:
+                raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(grain_size))
+        if isinstance(x_solute_sys, np.ndarray):
+            if (x_solute_sys < 0).any() or (x_solute_sys > 0.5).any():
+                raise ValueError('System solute concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_solute_sys))
+        else:
+            if x_solute_sys < 0 or x_solute_sys > 0.5:
+                raise ValueError('System solute concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_solute_sys))
 
         x_solute_interior = (6*self.atomic_volume**(1/3)/grain_size*x_solute_gb-x_solute_sys)/(6*self.atomic_volume**(1/3)/grain_size - 1)
         gb_energy = 1 + (2*(x_solute_gb - x_solute_interior)/(self.gamma_0*self.sigma))*((self.gamma_surf[self.solute]-self.gamma_surf[self.solvent])/6*self.sigma - self.h_mix * (17/3*x_solute_gb - 6*x_solute_interior + 1/6) + self.h_elastic - R*temperature*np.log((x_solute_interior*(1-x_solute_gb))/((1-x_solute_interior)*x_solute_gb))) #pylint: disable=E1101
@@ -168,6 +183,9 @@ class System:
         Args:
             temperature (float): temperature in Celsius
             overall_composition (float): overall composition of the solute
+
+        Returns:
+            Float of stable grain size
         """
         x_solute_gbs = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
         grain_boundary_energies = np.zeros((x_solute_gbs.shape))
@@ -176,8 +194,7 @@ class System:
         tolerance = 0.00001 # stopping accuracy of stable_grain_size
         while True:
             # calculate the grain_bondary_energies
-            for k, x_solute_gb in enumerate(x_solute_gbs):
-                grain_boundary_energies[k] = self.calculate_norm_gb_energy(x_solute_gb, temperature+273, stable_grain_size, overall_composition) # TODO: speedup with all remaining gbe[k] = NaN after first?
+            grain_boundary_energies = self.calculate_norm_gb_energy(x_solute_gbs, temperature+273, stable_grain_size, overall_composition) # TODO: speedup with all remaining gbe[k] = NaN after first?
             # skipping step to eliminate non-physical x_solute_interior values
             # find the minimum energy
             min_energy = np.nanmin(grain_boundary_energies)
@@ -241,7 +258,7 @@ class System:
         norm_gb_energy = np.ones((len(grain_sizes), len(x_solute_gb)))
         norm_gb_energy = self.calculate_norm_gb_energy(x_solute_gb.reshape((1, len(x_solute_gb))), temperature+273, grain_sizes.reshape((len(grain_sizes),1)), overall_composition)
         return norm_gb_energy
-        
+
     def calculate_grain_size_for_temperature_x_overall(self, temperatures, overall_compositions):
         """Calculate a 2d array stablized grain size for temperatures and x_overalls
 
@@ -323,7 +340,7 @@ class TernarySystem():
                 'System solute b concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_b_sys))
         if x_c_sys < 0 or x_c_sys > 0.5:
             raise ValueError(
-                'System solute c concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_c_yss))
+                'System solute c concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_c_sys))
 
         ab = self.ab
         ac = self.ac

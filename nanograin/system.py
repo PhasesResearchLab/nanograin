@@ -179,21 +179,24 @@ class System:
         return gb_energy
 
     @np.vectorize
-    def optimize_grain_size(self, overall_composition, temperature):
-        """Optimize the grain size with fixed temperature and x_overall
+    def optimize_grain_size(self, overall_composition, temperature, bounds=(1, 100)):
+        """Optimize the grain size with fixed temperature and x_overall using the brentq algorithm
 
         Args:
             temperature (ndarray): temperature in Celsius
             overall_composition (ndarray): overall composition of the solute
-
+        Kwargs:
+            bounds ((float, float)): two-tuple of floats for the lower and upper bounds of brentq algorithm
         Returns:
             ndarray of stable grain size
         """
         # first just calculate with a small range of x_solute_gbs, if the min is negative at a large
         #  grain size, >100, lets say we cannot converge
         x_solute_gbs = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
-        if self._gb_energies_optimize_scipy(100, x_solute_gbs, temperature, overall_composition) < 0:
-            return brentq(self._gb_energies_optimize_scipy, 1, 100, args=(x_solute_gbs, temperature, overall_composition), xtol=0.0001)
+        min_energy = self._gb_energies_optimize_scipy(bounds[0], x_solute_gbs, temperature, overall_composition)
+        max_energy = self._gb_energies_optimize_scipy(bounds[1], x_solute_gbs, temperature, overall_composition)
+        if min_energy*max_energy < 0:
+            return brentq(self._gb_energies_optimize_scipy, bounds[0], bounds[1], args=(x_solute_gbs, temperature, overall_composition), xtol=0.0001)
         else:
             return np.nan
 

@@ -178,15 +178,16 @@ class System:
         gb_energy = 1 + (2*(x_solute_gb - x_solute_interior)/(self.gamma_0*self.sigma))*((self.gamma_surf[self.solute]-self.gamma_surf[self.solvent])/6*self.sigma - self.h_mix * (17/3*x_solute_gb - 6*x_solute_interior + 1/6) + self.h_elastic - R*temperature*np.log((x_solute_interior*(1-x_solute_gb))/((1-x_solute_interior)*x_solute_gb))) #pylint: disable=E1101
         return gb_energy
 
+    @np.vectorize
     def optimize_grain_size(self, overall_composition, temperature):
-        """Optimize the grain size with fixed temperature and x_overall using a bisection method
+        """Optimize the grain size with fixed temperature and x_overall
 
         Args:
-            temperature (float): temperature in Celsius
-            overall_composition (float): overall composition of the solute
+            temperature (ndarray): temperature in Celsius
+            overall_composition (ndarray): overall composition of the solute
 
         Returns:
-            Float of stable grain size
+            ndarray of stable grain size
         """
         # first just calculate with a small range of x_solute_gbs, if the min is negative at a large
         #  grain size, >100, lets say we cannot converge
@@ -242,9 +243,7 @@ class System:
         Returns:
             A 2d array of energies for rows of grain sizes and columns of grain boundary solute composition
         """
-        norm_gb_energy = np.ones((len(grain_sizes), len(x_solute_gb)))
-        norm_gb_energy = self.calculate_norm_gb_energy(x_solute_gb.reshape((1, len(x_solute_gb))), temperature+273, grain_sizes.reshape((len(grain_sizes),1)), overall_composition)
-        return norm_gb_energy
+        return self.calculate_norm_gb_energy(x_solute_gb[np.newaxis], temperature+273, grain_sizes[:, np.newaxis], overall_composition)
 
     def calculate_grain_size_for_temperature_x_overall(self, temperatures, overall_compositions):
         """Calculate a 2d array stabilized grain size for temperatures and x_overalls
@@ -255,11 +254,7 @@ class System:
         Returns:
             A 2d array of stable grain sizes for rows of compositions and columns of temperatures
         """
-        grain_sizes = np.zeros((len(overall_compositions), len(temperatures))) # create an empty space for grain sizes
-        for i, overall_composition in enumerate(overall_compositions):
-            for j, temperature in enumerate(temperatures):
-                grain_sizes[i][j] = self.optimize_grain_size(overall_composition, temperature) # can be parallelized
-        return grain_sizes
+        return self.optimize_grain_size(self, overall_compositions[:,np.newaxis], temperatures[np.newaxis])
 
     def calculate_grain_size_for_temperature_h_mix(self, x_overall, temperatures, h_mixes):
         """Calculate stabilized grain sizes for temperatures and mixing enthalpies with fixed x_overall
@@ -271,12 +266,12 @@ class System:
         Returns:
             A 2d array of stable grain sizes for rows of h_mixes and columns of temperatures 
         """
+        # since we need to change a self property, this cannot be vectorized completely.
         system_h_mix = self.h_mix
         grain_sizes = np.zeros((len(h_mixes), len(temperatures))) # create an empty space for grain sizes
         for i, h_mix in enumerate(h_mixes):
             self.h_mix = h_mix*1000
-            for j, temperature in enumerate(temperatures):
-                grain_sizes[i][j] = self.optimize_grain_size(x_overall, temperature) # can be parallelized
+            grain_sizes[i] = self.optimize_grain_size(self, x_overall, temperatures[np.newaxis])
         self.h_mix = system_h_mix
         return grain_sizes
 

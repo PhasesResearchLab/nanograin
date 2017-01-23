@@ -135,44 +135,27 @@ class System:
         strengthening = G_solvent * epsilon_s ** (1.5) * concentration ** (0.5) / 700
         return strengthening
 
-    def calculate_norm_gb_energy(self, x_solute_gb, temperature, grain_size, x_solute_sys):
+    def calculate_norm_gb_energy(self, x_solute_gb, temperature, grain_size, x_solute_sys, error_check=True):
         """Calculates the normalized grain boundary energy
 
         Args:
-            x_solute_gb (float): solute concentration in the grain boundary in J/m^2
-            temperature (float): temperature in K
-            grain_size (float): grain size in J/m^2
-            x_solute_sys (float): solute concentration in the system J/m^2
-            system (dict): properties of the system
-
-        TODO: it would be neat if this made an N-dimensional array if ndarrays
-        were passed for the arguments. All of the plots would just be slices
-        of this array. Variables could be optionally fixed.
+            x_solute_gb (ndarray): solute concentration in the grain boundary in J/m^2
+            temperature (ndarray): temperature in K
+            grain_size (ndarray): grain size in J/m^2
+            x_solute_sys (ndarray): solute concentration in the system J/m^2
+        Kwargs:
+            error_check (bool): whether to check for errors in the arguments. Small speed up.
+            (~10% for a single calculation, ~40% for larger (10^5) arrays). Defaults to True.
+        Returns:
+            ndarray of grain boundary energies
+        Raises:
+            ValueError if error_check is True and the data is out of bounds
         """
-        if isinstance(x_solute_gb, np.ndarray):
-            if (x_solute_gb < 0).any() or (x_solute_gb > 1).any():
-                raise ValueError('Solute grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_solute_gb))
-        else:
-            if x_solute_gb < 0 or x_solute_gb > 1:
-                raise ValueError('Solute grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_solute_gb))
-        if isinstance(temperature, np.ndarray):
-            if (temperature < 0).any():
-                raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
-        else:
-            if temperature < 0:
-                raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
-        if isinstance(grain_size, np.ndarray):
-            if (grain_size <= 0).any():
-                raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(grain_size))
-        else:
-            if grain_size <= 0:
-                raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(grain_size))
-        if isinstance(x_solute_sys, np.ndarray):
-            if (x_solute_sys < 0).any() or (x_solute_sys > 0.5).any():
-                raise ValueError('System solute concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_solute_sys))
-        else:
-            if x_solute_sys < 0 or x_solute_sys > 0.5:
-                raise ValueError('System solute concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_solute_sys))
+        if error_check:
+            System.error_check_x(x_solute_gb)
+            System.error_check_x(x_solute_sys, bounds=(0, 0.5))
+            System.error_check_temperature(temperature)
+            System.error_check_grain_size(grain_size)
 
         x_solute_interior = (6*self.atomic_volume**(1/3)/grain_size*x_solute_gb-x_solute_sys)/(6*self.atomic_volume**(1/3)/grain_size - 1)
         gb_energy = 1 + (2*(x_solute_gb - x_solute_interior)/(self.gamma_0*self.sigma))*((self.gamma_surf[self.solute]-self.gamma_surf[self.solvent])/6*self.sigma - self.h_mix * (17/3*x_solute_gb - 6*x_solute_interior + 1/6) + self.h_elastic - R*temperature*np.log((x_solute_interior*(1-x_solute_gb))/((1-x_solute_interior)*x_solute_gb))) #pylint: disable=E1101
@@ -182,6 +165,7 @@ class System:
     def optimize_grain_size(self, overall_composition, temperature, bounds=(1, 100)):
         """Optimize the grain size with fixed temperature and x_overall using the brentq algorithm
 
+        Note: Because this is vectorized YOU MUST EXPLICITLY PASS SELF
         Args:
             temperature (ndarray): temperature in Celsius
             overall_composition (ndarray): overall composition of the solute
@@ -278,6 +262,36 @@ class System:
         self.h_mix = system_h_mix
         return grain_sizes
 
+    @staticmethod
+    def error_check_x(x, bounds=(0, 1)):
+        """Raise an exception of mole fraction is out of bounds"""
+        l = bounds[0] # lower bound
+        u = bounds[1] # upper bound
+        if isinstance(x, np.ndarray):
+            if (x < l).any() or (x > u).any():
+                raise ValueError('Solute concentration must be between x={} and x={}. Passed x={}.'.format(l, u, x))
+        else:
+            if x < l or x > u:
+                raise ValueError('Solute concentration must be between x={} and x={}. Passed x={}.'.format(l, u, x))
+
+    @staticmethod
+    def error_check_temperature(temperature):
+        if isinstance(temperature, np.ndarray):
+            if (temperature < 0).any():
+                raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
+        else:
+            if temperature < 0:
+                raise ValueError('Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
+
+    @staticmethod
+    def error_check_grain_size(d):
+        if isinstance(d, np.ndarray):
+            if (d <= 0).any():
+                raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(d))
+        else:
+            if d <= 0:
+                raise ValueError('Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(d))
+
 
 class TernarySystem():
     """Creates a ternary systems based on two non-interacting binaries."""
@@ -292,40 +306,30 @@ class TernarySystem():
         ac = System.from_json(element_file, enthalpy_file, solvent, solute_c)
         return cls(ab, ac)
 
-    def calculate_norm_gb_energy(self, x_b_gb, x_c_gb, x_b_sys, x_c_sys, temperature, grain_size):
+    def calculate_norm_gb_energy(self, x_b_gb, x_c_gb, x_b_sys, x_c_sys, temperature, grain_size, error_check=True):
         """Calculates the normalized grain boundary energy
 
         Args:
-            x_solute_gb (float): solute concentration in the grain boundary in J/m^2
-            temperature (float): temperature in K
-            grain_size (float): grain size in J/m^2
-            x_solute_sys (float): solute concentration in the system J/m^2
-            system (dict): properties of the system
-
-        TODO: it would be neat if this made an N-dimensional array if ndarrays
-        were passed for the arguments. All of the plots would just be slices
-        of this array. Variables could be optionally fixed.
+            x_solute_gb (ndarray): solute concentration in the grain boundary in J/m^2
+            temperature (ndarray): temperature in K
+            grain_size (ndarray): grain size in J/m^2
+            x_solute_sys (ndarray): solute concentration in the system J/m^2
+        Kwargs:
+            error_check (bool): whether to check for errors in the arguments. Small speed up.
+            (~10% for a single calculation, ~40% for larger (10^5) arrays). Defaults to True.
+        Returns:
+            ndarray of grain boundary energies
+        Raises:
+            ValueError if error_check is True and the data is out of bounds
         """
         # check for errors in passed data
-        if x_b_gb < 0 or x_b_gb > 1:
-            raise ValueError(
-                'Solute b grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_b_gb))
-        if x_c_gb < 0 or x_c_gb > 1:
-            raise ValueError(
-                'Solute c grain boundary concentration must be between x=0 and x=1. Passed x_gb={}.'.format(x_c_gb))
-        if temperature < 0:
-            raise ValueError(
-                'Grain boundary energy cannot be calculated for temperatures below zero. Passed {} K.'.format(temperature))
-        if grain_size <= 0:
-            raise ValueError(
-                'Cannot calculate grain boundary energy for zero or negative grain sizes. Passed d={} nm.'.format(
-                    grain_size))
-        if x_b_sys < 0 or x_b_sys > 0.5:
-            raise ValueError(
-                'System solute b concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_b_sys))
-        if x_c_sys < 0 or x_c_sys > 0.5:
-            raise ValueError(
-                'System solute c concentrations must be between 0 and 0.5. Passed x_sys={}.'.format(x_c_sys))
+        if error_check:
+            System.error_check_x(x_b_gb)
+            System.error_check_x(x_c_gb)
+            System.error_check_x(x_b_sys, bounds=(0, 0.5))
+            System.error_check_x(x_c_sys, bounds=(0, 0.5))
+            System.error_check_temperature(temperature)
+            System.error_check_grain_size(grain_size)
 
         ab = self.ab
         ac = self.ac

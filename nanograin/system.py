@@ -8,7 +8,7 @@ import json
 import itertools
 import numpy as np
 from scipy.constants import R, N_A
-from scipy.optimize import fsolve
+from scipy.optimize import brentq
 
 class System:
     """Defines the properties of a binary solvent-solute system"""
@@ -189,10 +189,10 @@ class System:
             Float of stable grain size
         """
         # first just calculate with a small range of x_solute_gbs, if the min is negative at a large
-        #  grain size, >250, lets say we cannot converge
+        #  grain size, >100, lets say we cannot converge
         x_solute_gbs = np.arange(0.01, 0.5, 0.001) # domain over which GB energies will be found. May need to reduce number
-        if self._gb_energies_optimize_scipy(250, x_solute_gbs, temperature, overall_composition) < 0:
-            return fsolve(self._gb_energies_optimize_scipy, 1, args=(x_solute_gbs, temperature, overall_composition), xtol=0.0001)
+        if self._gb_energies_optimize_scipy(100, x_solute_gbs, temperature, overall_composition) < 0:
+            return brentq(self._gb_energies_optimize_scipy, 1, 100, args=(x_solute_gbs, temperature, overall_composition), xtol=0.0001)
         else:
             return np.nan
 

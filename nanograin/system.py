@@ -77,6 +77,9 @@ class System:
         """Create a system from a csv-like using pandas"""
         pass
 
+    def __repr__(self):
+        return 'System {}-{}\nMixing enthalpy: {:0.4e}\nElastic Enthalpy: {:0.4e}'.format(self.solvent, self.solute, self.h_mix, self.h_elastic )
+
     def theoretical_density(self, x_solute):
         """Return the ratio of the theoretical density of the alloy to the solvent
         
@@ -297,6 +300,12 @@ class TernarySystem():
     """Creates a ternary systems based on two non-interacting binaries."""
     def __init__(self, ab, ac):
         """Takes two systems A-B and A-C."""
+        if not isinstance(ab, System):
+            raise TypeError("AB is not an instance of the System class")
+        elif not isinstance(ac, System):
+            raise TypeError("AC is not an instance of the System class")
+        if ab.solvent is not ac.solvent:
+            raise ValueError("AB solvent {} does not match AC solven {}".format(ab.solvent, ac.solvent))
         self.ab = ab
         self.ac = ac
 
@@ -305,6 +314,9 @@ class TernarySystem():
         ab = System.from_json(element_file, enthalpy_file, solvent, solute_b)
         ac = System.from_json(element_file, enthalpy_file, solvent, solute_c)
         return cls(ab, ac)
+
+    def __repr__(self):
+        return 'System {}-{}-{}\nMixing enthalpy: {:0.4e}\nElastic Enthalpy: {:0.4e}'.format(self.ab.solvent, self.ab.solute, self.ac.solute, (self.ab.h_mix+self.ac.h_mix)/2, (self.ab.h_elastic+self.ac.h_elastic)/2 )
 
     def calculate_norm_gb_energy(self, x_b_gb, x_c_gb, x_b_sys, x_c_sys, temperature, grain_size, error_check=True):
         """Calculates the normalized grain boundary energy
